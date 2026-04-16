@@ -2,6 +2,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
@@ -31,6 +33,7 @@ import {
   updateUserProfile,
   getAppointmentsDueForReminder,
   getDb,
+  upsertUser,
 } from "./db";
 import { notifyOwner } from "./_core/notification";
 import { users } from "../drizzle/schema";
@@ -142,6 +145,60 @@ export const appRouter = router({
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    login: publicProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          password: z.string().min(1),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.cookieSecret) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "JWT_SECRET is not configured.",
+          });
+        }
+
+        const configuredEmail = ENV.adminEmail.trim().toLowerCase();
+        const configuredPassword = ENV.adminPassword;
+
+        if (!configuredEmail || !configuredPassword) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "ADMIN_EMAIL/ADMIN_PASSWORD are not configured.",
+          });
+        }
+
+        const inputEmail = input.email.trim().toLowerCase();
+        const validCredentials =
+          inputEmail === configuredEmail && input.password === configuredPassword;
+
+        if (!validCredentials) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais invalidas." });
+        }
+
+        const openId = `local-admin:${configuredEmail}`;
+        const signedInAt = new Date();
+
+        await upsertUser({
+          openId,
+          name: "Karine Reverte",
+          email: configuredEmail,
+          loginMethod: "local-password",
+          role: "admin",
+          lastSignedIn: signedInAt,
+        });
+
+        const sessionToken = await sdk.createSessionToken(openId, {
+          name: "Karine Reverte",
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        return { success: true } as const;
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

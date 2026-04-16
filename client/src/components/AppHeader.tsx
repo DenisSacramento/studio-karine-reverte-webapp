@@ -33,13 +33,13 @@ export default function AppHeader() {
     : "?";
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
+    <header className="sticky top-0 z-40 bg-background/85 backdrop-blur-xl border-b border-border/70 shadow-[0_8px_30px_rgba(162,29,94,0.06)]">
       <div className="container flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 no-underline">
           <div className="flex flex-col leading-tight">
-            <span className="text-xs font-light tracking-[0.3em] text-muted-foreground uppercase">Studio</span>
-            <span className="text-lg font-bold text-primary" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <span className="studio-word text-sm md:text-base text-muted-foreground">Studio</span>
+            <span className="karine-boxed text-[0.78rem] md:text-[0.9rem]">
               Karine Reverte
             </span>
           </div>
@@ -127,7 +127,7 @@ export default function AppHeader() {
 
       {/* Mobile Nav */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-border bg-white px-4 py-3 space-y-1">
+        <div className="md:hidden border-t border-border bg-background/95 px-4 py-3 space-y-1 backdrop-blur-xl">
           {navLinks.map((link) => (
             <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}>
               <Button

@@ -22,17 +22,17 @@ export default function Servicos() {
   const { data: services, isLoading } = trpc.services.list.useQuery();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <AppHeader />
 
       {/* Hero */}
-      <section className="skr-gradient py-14 border-b border-border">
+      <section className="skr-gradient py-16 md:py-20 border-b border-border/70 mx-4 mt-4 rounded-[2rem] shadow-sm">
         <div className="container text-center">
           <div className="flex items-center justify-center gap-2 mb-3">
             <Scissors size={18} className="text-primary" />
             <p className="text-primary text-sm font-medium tracking-widest uppercase">Nossos Serviços</p>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-3">
+          <h1 className="section-title-pink text-4xl md:text-5xl mb-3">
             Tratamentos Especializados
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
@@ -42,7 +42,7 @@ export default function Servicos() {
       </section>
 
       {/* Services Grid */}
-      <section className="py-14">
+      <section className="py-20 md:py-24">
         <div className="container">
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -51,9 +51,9 @@ export default function Servicos() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {(services ?? []).map((service) => (
-                <Card key={service.id} className="skr-card-hover border-border overflow-hidden">
+                <Card key={service.id} className="skr-card-hover border-primary/20 overflow-hidden bg-primary/[0.08] backdrop-blur-sm">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="text-4xl">{SERVICE_ICONS[service.name] ?? "✂️"}</div>
@@ -62,7 +62,7 @@ export default function Servicos() {
                         {service.durationMinutes} min
                       </Badge>
                     </div>
-                    <h3 className="text-xl font-bold text-foreground mb-2">{service.name}</h3>
+                    <h3 className="service-card-title text-lg text-foreground mb-2">{service.name}</h3>
                     <p className="text-muted-foreground text-sm leading-relaxed mb-4">
                       {service.description}
                     </p>
@@ -72,7 +72,7 @@ export default function Servicos() {
                       </p>
                     )}
                     <Link href={`/agendar?serviceId=${service.id}`}>
-                      <Button size="sm" className="w-full">Agendar este serviço</Button>
+                      <Button size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Agendar este serviço</Button>
                     </Link>
                   </CardContent>
                 </Card>
@@ -83,7 +83,7 @@ export default function Servicos() {
       </section>
 
       {/* CTA */}
-      <section className="py-12 bg-secondary/40 border-t border-border">
+      <section className="py-14 bg-secondary/30 border-t border-border/70 mx-4 mb-4 rounded-[2rem]">
         <div className="container text-center">
           <p className="text-muted-foreground mb-4">Não encontrou o que procura? Fale diretamente com a Karine!</p>
           <a

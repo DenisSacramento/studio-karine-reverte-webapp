@@ -16,11 +16,11 @@ export default function Ofertas() {
   const flashOffers = serviceOffers ?? [];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <AppHeader />
 
       {/* Hero */}
-      <section className="skr-gradient py-14 border-b border-border">
+      <section className="skr-gradient py-16 md:py-20 border-b border-border/70 mx-4 mt-4 rounded-[2rem] shadow-sm">
         <div className="container text-center">
           <div className="flex items-center justify-center gap-2 mb-3">
             <Gift size={18} className="text-primary" />
@@ -35,7 +35,7 @@ export default function Ofertas() {
         </div>
       </section>
 
-      <div className="container py-12">
+      <div className="container py-14 md:py-16">
         {isLoading || serviceOffersLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -66,15 +66,15 @@ export default function Ofertas() {
                   <Gift size={20} className="text-primary" />
                   <h2 className="text-2xl font-bold">Ofertas Relampago</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                   {flashOffers.map((offer) => (
-                    <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
+                    <Card key={offer.id} className="skr-card-hover border-border/70 overflow-hidden bg-white/90 backdrop-blur-sm">
                       {offer.serviceImageUrl ? (
                         <div className="h-44 overflow-hidden">
                           <img
                             src={offer.serviceImageUrl}
                             alt={offer.serviceName}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover saturate-[0.9] contrast-[0.98] brightness-[1.03]"
                           />
                         </div>
                       ) : (
@@ -115,9 +115,9 @@ export default function Ofertas() {
                   <Gift size={20} className="text-primary" />
                   <h2 className="text-2xl font-bold">Ofertas Especiais</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                   {offerItems.map((offer) => (
-                    <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
+                    <Card key={offer.id} className="skr-card-hover border-border/70 overflow-hidden bg-white/90 backdrop-blur-sm">
                       <CardContent className="p-6">
                         <Badge className="bg-primary text-primary-foreground mb-3 text-xs">
                           🏷️ Oferta Especial
@@ -146,9 +146,9 @@ export default function Ofertas() {
                   <Sparkles size={20} className="text-primary" />
                   <h2 className="text-2xl font-bold">Novidades do Studio</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                   {newsItems.map((offer) => (
-                    <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
+                    <Card key={offer.id} className="skr-card-hover border-border/70 overflow-hidden bg-white/90 backdrop-blur-sm">
                       <CardContent className="p-6">
                         <Badge className="bg-accent text-accent-foreground mb-3 text-xs">
                           ✨ Novidade
@@ -171,19 +171,19 @@ export default function Ofertas() {
       </div>
 
       {/* CTA */}
-      <section className="py-12 bg-secondary/40 border-t border-border">
+      <section className="py-14 bg-secondary/30 border-t border-border/70 mx-4 mb-4 rounded-[2rem]">
         <div className="container text-center">
           <p className="text-muted-foreground mb-4">Quer garantir sua oferta? Agende agora!</p>
           <div className="flex gap-3 justify-center flex-wrap">
             <Link href="/agendar">
-              <Button>Agendar Horário</Button>
+              <Button className="bg-accent text-accent-foreground hover:bg-accent/90">Agendar Horário</Button>
             </Link>
             <a
               href="https://wa.me/5511910928534?text=Olá%20Karine!%20Vi%20as%20ofertas%20no%20app%20e%20quero%20aproveitar!"
               target="_blank"
               rel="noopener noreferrer"
             >
-              <Button variant="outline" className="border-green-500 text-green-600 hover:bg-green-50 gap-2">
+              <Button variant="outline" className="border-primary text-primary hover:bg-primary/5 gap-2">
                 <MessageCircle size={16} /> WhatsApp
               </Button>
             </a>

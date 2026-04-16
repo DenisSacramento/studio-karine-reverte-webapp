@@ -2,16 +2,18 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Gift, MessageCircle, Sparkles } from "lucide-react";
+import { Gift, MessageCircle, Sparkles, Scissors } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import WhatsAppFab from "@/components/WhatsAppFab";
 import { Link } from "wouter";
 
 export default function Ofertas() {
   const { data: offers, isLoading } = trpc.offers.list.useQuery();
+  const { data: serviceOffers, isLoading: serviceOffersLoading } = trpc.offers.serviceList.useQuery();
 
-  const offerItems = (offers ?? []).filter((o) => o.type === "offer");
+  const offerItems = (offers ?? []).filter((o) => o.type === "offer" && !o.serviceId);
   const newsItems = (offers ?? []).filter((o) => o.type === "news");
+  const flashOffers = serviceOffers ?? [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,13 +36,13 @@ export default function Ofertas() {
       </section>
 
       <div className="container py-12">
-        {isLoading ? (
+        {isLoading || serviceOffersLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-48 rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
-        ) : !offers || offers.length === 0 ? (
+        ) : (!offers || offers.length === 0) && flashOffers.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <Gift size={48} className="mx-auto mb-4 opacity-30" />
             <h3 className="text-xl font-semibold mb-2">Nenhuma oferta no momento</h3>
@@ -57,6 +59,55 @@ export default function Ofertas() {
           </div>
         ) : (
           <div className="space-y-12">
+            {/* Flash Offers */}
+            {flashOffers.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-6">
+                  <Gift size={20} className="text-primary" />
+                  <h2 className="text-2xl font-bold">Ofertas Relampago</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {flashOffers.map((offer) => (
+                    <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
+                      {offer.serviceImageUrl ? (
+                        <div className="h-44 overflow-hidden">
+                          <img
+                            src={offer.serviceImageUrl}
+                            alt={offer.serviceName}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-44 bg-secondary/40 flex items-center justify-center">
+                          <Scissors size={40} className="text-primary/70" />
+                        </div>
+                      )}
+                      <CardContent className="p-6">
+                        <Badge className="bg-primary text-primary-foreground mb-3 text-xs">
+                          ⚡ Oferta Relampago
+                        </Badge>
+                        <h3 className="font-bold text-xl text-foreground mb-1">{offer.serviceName}</h3>
+                        <p className="text-muted-foreground text-sm leading-relaxed mb-4">{offer.offerDescription}</p>
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground line-through">
+                            R$ {Number(offer.servicePrice ?? 0).toFixed(2).replace(".", ",")}
+                          </p>
+                          <p className="text-2xl font-bold text-primary">
+                            R$ {Number(offer.promotionalPrice ?? 0).toFixed(2).replace(".", ",")}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/agendar?serviceId=${offer.serviceId}&promoPrice=${offer.promotionalPrice ?? ""}`}
+                        >
+                          <Button size="sm" className="w-full">Agendar</Button>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Offers */}
             {offerItems.length > 0 && (
               <div>
@@ -67,11 +118,6 @@ export default function Ofertas() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {offerItems.map((offer) => (
                     <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
-                      {offer.imageUrl && (
-                        <div className="h-48 overflow-hidden">
-                          <img src={offer.imageUrl} alt={offer.title} className="w-full h-full object-cover" />
-                        </div>
-                      )}
                       <CardContent className="p-6">
                         <Badge className="bg-primary text-primary-foreground mb-3 text-xs">
                           🏷️ Oferta Especial
@@ -103,11 +149,6 @@ export default function Ofertas() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {newsItems.map((offer) => (
                     <Card key={offer.id} className="skr-card-hover border-border overflow-hidden">
-                      {offer.imageUrl && (
-                        <div className="h-48 overflow-hidden">
-                          <img src={offer.imageUrl} alt={offer.title} className="w-full h-full object-cover" />
-                        </div>
-                      )}
                       <CardContent className="p-6">
                         <Badge className="bg-accent text-accent-foreground mb-3 text-xs">
                           ✨ Novidade

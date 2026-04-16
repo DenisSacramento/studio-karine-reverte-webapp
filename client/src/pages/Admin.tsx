@@ -33,6 +33,9 @@ export default function Admin() {
   const [newServiceDesc, setNewServiceDesc] = useState("");
   const [newServiceDuration, setNewServiceDuration] = useState("60");
   const [newServicePrice, setNewServicePrice] = useState("");
+  const [offerServiceId, setOfferServiceId] = useState<number | null>(null);
+  const [offerPrice, setOfferPrice] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -48,6 +51,10 @@ export default function Admin() {
   const { data: services } = trpc.services.list.useQuery({ all: true });
   const { data: clients } = trpc.admin.clients.useQuery(undefined, { enabled: isAuthenticated && user?.role === "admin" });
   const { data: offers } = trpc.offers.list.useQuery({ all: true }, { enabled: isAuthenticated && user?.role === "admin" });
+  const { data: serviceOffers } = trpc.offers.serviceList.useQuery(
+    { all: true },
+    { enabled: isAuthenticated && user?.role === "admin" }
+  );
 
   const updateStatusMutation = trpc.appointments.updateStatus.useMutation({
     onSuccess: () => { toast.success("Status atualizado!"); utils.appointments.adminList.invalidate(); utils.admin.stats.invalidate(); },
@@ -66,6 +73,27 @@ export default function Admin() {
 
   const sendRemindersMutation = trpc.appointments.sendReminders.useMutation({
     onSuccess: (data) => toast.success(`${data.sent} lembrete(s) enviado(s)!`),
+    onError: (err) => toast.error(err.message),
+  });
+
+  const createServiceOfferMutation = trpc.offers.createServiceOffer.useMutation({
+    onSuccess: () => {
+      toast.success("Oferta relampago criada!");
+      setOfferServiceId(null);
+      setOfferPrice("");
+      setOfferDescription("");
+      utils.offers.serviceList.invalidate();
+      utils.offers.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const toggleServiceOfferMutation = trpc.offers.setServiceOfferActive.useMutation({
+    onSuccess: () => {
+      toast.success("Status da oferta atualizado!");
+      utils.offers.serviceList.invalidate();
+      utils.offers.list.invalidate();
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -318,27 +346,128 @@ export default function Admin() {
               <CardContent>
                 <div className="space-y-2">
                   {(services ?? []).map((service) => (
-                    <div key={service.id} className="flex items-center justify-between p-3 rounded-lg border border-border">
-                      <div>
-                        <p className="font-semibold text-sm">{service.name}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-2">
-                          <Clock size={10} /> {service.durationMinutes} min
-                          {service.price && <span>· R$ {Number(service.price).toFixed(2).replace(".", ",")}</span>}
-                        </p>
+                    <div key={service.id} className="p-3 rounded-lg border border-border space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-sm">{service.name}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Clock size={10} /> {service.durationMinutes} min
+                            {service.price && <span>· R$ {Number(service.price).toFixed(2).replace(".", ",")}</span>}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={service.active ? "default" : "secondary"} className="text-xs">
+                            {service.active ? "Ativo" : "Inativo"}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => toggleServiceMutation.mutate({ id: service.id, active: !service.active })}
+                          >
+                            {service.active ? <EyeOff size={12} /> : <Eye size={12} />}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={service.active ? "default" : "secondary"} className="text-xs">
-                          {service.active ? "Ativo" : "Inativo"}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs"
-                          onClick={() => toggleServiceMutation.mutate({ id: service.id, active: !service.active })}
-                        >
-                          {service.active ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </Button>
-                      </div>
+
+                      {(() => {
+                        const activeServiceOffer = (serviceOffers ?? []).find(
+                          (offer) => offer.serviceId === service.id && offer.active
+                        );
+
+                        return (
+                          <div className="rounded-md bg-secondary/40 p-3 border border-border/60">
+                            {activeServiceOffer ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Badge className="text-xs bg-primary text-primary-foreground">Oferta Ativa</Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() =>
+                                      toggleServiceOfferMutation.mutate({
+                                        id: activeServiceOffer.id,
+                                        active: false,
+                                      })
+                                    }
+                                    disabled={toggleServiceOfferMutation.isPending}
+                                  >
+                                    Desativar
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{activeServiceOffer.offerDescription}</p>
+                                <p className="text-sm font-medium text-primary">
+                                  De R$ {Number(activeServiceOffer.servicePrice ?? 0).toFixed(2).replace(".", ",")}
+                                  {" "}por R$ {Number(activeServiceOffer.promotionalPrice ?? 0).toFixed(2).replace(".", ",")}
+                                </p>
+                              </div>
+                            ) : offerServiceId === service.id ? (
+                              <div className="space-y-2">
+                                <Label className="text-xs">Preço Promocional (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={offerPrice}
+                                  onChange={(e) => setOfferPrice(e.target.value)}
+                                  placeholder="Ex: 70"
+                                />
+                                <Label className="text-xs">Descrição da Oferta</Label>
+                                <Input
+                                  value={offerDescription}
+                                  onChange={(e) => setOfferDescription(e.target.value)}
+                                  placeholder="Ex: Botox de R$ 70"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="text-xs"
+                                    onClick={() =>
+                                      createServiceOfferMutation.mutate({
+                                        serviceId: service.id,
+                                        promotionalPrice: offerPrice,
+                                        offerDescription,
+                                      })
+                                    }
+                                    disabled={
+                                      createServiceOfferMutation.isPending ||
+                                      !offerPrice ||
+                                      !offerDescription.trim()
+                                    }
+                                  >
+                                    Salvar Oferta
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs"
+                                    onClick={() => {
+                                      setOfferServiceId(null);
+                                      setOfferPrice("");
+                                      setOfferDescription("");
+                                    }}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => {
+                                  setOfferServiceId(service.id);
+                                  setOfferPrice("");
+                                  setOfferDescription("");
+                                }}
+                              >
+                                Criar Oferta
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

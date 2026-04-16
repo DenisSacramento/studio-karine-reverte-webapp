@@ -17,23 +17,38 @@ import { Link } from "wouter";
 export default function AdminOfertas() {
   const { user, isAuthenticated } = useAuth();
   const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
+  const [serviceId, setServiceId] = useState<string>("");
   const [content, setContent] = useState("");
+  const [promotionalPrice, setPromotionalPrice] = useState("");
   const [type, setType] = useState<"offer" | "news">("offer");
-  const [imageUrl, setImageUrl] = useState("");
+  const [pendingWhatsappUrl, setPendingWhatsappUrl] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
+  const { data: services } = trpc.services.list.useQuery({ all: true });
   const { data: offers, isLoading } = trpc.offers.list.useQuery(
     { all: true },
     { enabled: isAuthenticated && user?.role === "admin" }
   );
 
   const createMutation = trpc.offers.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Oferta criada com sucesso!");
       setOpen(false);
-      setTitle(""); setContent(""); setType("offer"); setImageUrl("");
+      setServiceId("");
+      setContent("");
+      setType("offer");
+      setPromotionalPrice("");
+      utils.offers.serviceList.invalidate();
       utils.offers.list.invalidate();
+
+      if (data.whatsappUrl) {
+        const popup = window.open(data.whatsappUrl, "_blank", "noopener,noreferrer");
+        if (!popup) {
+          setPendingWhatsappUrl(data.whatsappUrl);
+        } else {
+          setPendingWhatsappUrl(null);
+        }
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -114,38 +129,89 @@ export default function AdminOfertas() {
                 </div>
                 <div>
                   <Label>Título</Label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: 20% off em Botox Capilar" className="mt-1" />
+                  <Select value={serviceId} onValueChange={setServiceId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Selecione um serviço" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(services ?? []).map((service) => (
+                        <SelectItem key={service.id} value={String(service.id)}>
+                          {service.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Conteúdo</Label>
                   <Textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
-                    placeholder="Descreva a oferta ou novidade em detalhes..."
+                    placeholder="Ex: Botox com 20% de desconto"
                     rows={4}
                     className="mt-1"
                   />
                 </div>
-                <div>
-                  <Label>URL da Imagem (opcional)</Label>
-                  <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="mt-1" />
-                </div>
+                {type === "offer" && (
+                  <div>
+                    <Label>Valor Promocional (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={promotionalPrice}
+                      onChange={(e) => setPromotionalPrice(e.target.value)}
+                      placeholder="Ex: 70"
+                      className="mt-1"
+                    />
+                  </div>
+                )}
                 <div className="flex gap-2 pt-2">
                   <Button
                     className="flex-1"
-                    onClick={() => createMutation.mutate({ title, content, type, imageUrl: imageUrl || undefined })}
-                    disabled={!title || !content || createMutation.isPending}
+                    onClick={() =>
+                      createMutation.mutate({
+                        serviceId: Number(serviceId),
+                        content,
+                        type,
+                        promotionalPrice: type === "offer" ? promotionalPrice : undefined,
+                      })
+                    }
+                    disabled={
+                      !serviceId ||
+                      !content ||
+                      createMutation.isPending ||
+                      (type === "offer" && !promotionalPrice)
+                    }
                   >
-                    {createMutation.isPending ? "Criando..." : "Criar como Rascunho"}
+                    {createMutation.isPending ? "Criando..." : "Salvar Oferta"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">
-                  Após criar, publique para notificar os clientes por e-mail.
+                  A imagem da oferta será a imagem padrão do serviço selecionado.
                 </p>
               </div>
             </DialogContent>
           </Dialog>
         </div>
+
+        {pendingWhatsappUrl && (
+          <Card className="mb-4 border-green-200 bg-green-50/60">
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-green-800">
+                Oferta criada! Clique para enviar a mensagem no WhatsApp.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => {
+                  window.open(pendingWhatsappUrl, "_blank", "noopener,noreferrer");
+                  setPendingWhatsappUrl(null);
+                }}
+              >
+                Abrir WhatsApp
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="space-y-3">
@@ -230,10 +296,10 @@ export default function AdminOfertas() {
           <div className="flex items-start gap-3">
             <Send size={16} className="text-primary mt-0.5 shrink-0" />
             <div>
-              <p className="font-semibold text-sm">Como funciona a notificação?</p>
+              <p className="font-semibold text-sm">Como funciona o aviso?</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Ao clicar em "Publicar & Notificar", todos os clientes cadastrados receberão um e-mail com a oferta.
-                Isso acontece apenas uma vez por oferta. Você pode despublicar sem reenviar e-mails.
+                Ao salvar a oferta, o sistema monta a mensagem e abre o WhatsApp uma vez para envio rápido.
+                Se o pop-up for bloqueado, use o botão "Abrir WhatsApp" mostrado acima.
               </p>
             </div>
           </div>

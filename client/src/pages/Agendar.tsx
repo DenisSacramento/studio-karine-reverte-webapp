@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { CalendarDays, CheckCircle, ChevronLeft, ChevronRight, Clock, Scissors } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import AppHeader from "@/components/AppHeader";
 import WhatsAppFab from "@/components/WhatsAppFab";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 
 const SERVICE_ICONS: Record<string, string> = {
   "Selagem": "✨", "Progressiva Sem Formol": "💫", "Progressiva Com Formol": "⚡",
@@ -33,12 +33,16 @@ export default function Agendar() {
   const [, navigate] = useLocation();
   const params = new URLSearchParams(search);
   const preselectedServiceId = params.get("serviceId") ? Number(params.get("serviceId")) : null;
+  const promoPriceParam = params.get("promoPrice");
+  const promoPrice = promoPriceParam ? Number(promoPriceParam) : null;
 
   const [step, setStep] = useState(1);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(preselectedServiceId);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [success, setSuccess] = useState(false);
 
@@ -51,8 +55,16 @@ export default function Agendar() {
   const utils = trpc.useUtils();
   const createMutation = trpc.appointments.create.useMutation({
     onSuccess: () => {
+      toast.success("Agendamento realizado com sucesso!");
       setSuccess(true);
       utils.appointments.myList.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const clientRegisterMutation = trpc.auth.clientRegister.useMutation({
+    onSuccess: () => {
+      utils.auth.me.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -62,6 +74,13 @@ export default function Agendar() {
   }, [preselectedServiceId]);
 
   const selectedService = services?.find((s) => s.id === selectedServiceId);
+  const promoApplies =
+    selectedServiceId !== null &&
+    preselectedServiceId !== null &&
+    selectedServiceId === preselectedServiceId &&
+    promoPrice !== null &&
+    Number.isFinite(promoPrice) &&
+    promoPrice > 0;
 
   // Calendar helpers
   const today = new Date();
@@ -82,26 +101,30 @@ export default function Agendar() {
     setSelectedTime("");
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!selectedServiceId || !selectedDate || !selectedTime) return;
-    createMutation.mutate({ serviceId: selectedServiceId, appointmentDate: selectedDate, appointmentTime: selectedTime, clientNotes: notes });
-  }
+    try {
+      if (!isAuthenticated) {
+        if (!clientName.trim() || !clientPhone.trim()) {
+          toast.error("Preencha nome e telefone para confirmar.");
+          return;
+        }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <div className="container py-20 text-center">
-          <CalendarDays size={48} className="text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Faça login para agendar</h2>
-          <p className="text-muted-foreground mb-6">Você precisa estar logada para realizar um agendamento.</p>
-          <a href={getLoginUrl()}>
-            <Button size="lg">Entrar / Cadastrar</Button>
-          </a>
-        </div>
-        <WhatsAppFab />
-      </div>
-    );
+        await clientRegisterMutation.mutateAsync({
+          name: clientName,
+          phone: clientPhone,
+        });
+      }
+
+      await createMutation.mutateAsync({
+        serviceId: selectedServiceId,
+        appointmentDate: selectedDate,
+        appointmentTime: selectedTime,
+        clientNotes: notes,
+      });
+    } catch {
+      // erros já tratados nas mutations
+    }
   }
 
   if (success) {
@@ -217,6 +240,16 @@ export default function Agendar() {
                 <Badge variant="secondary" className="ml-auto text-xs">
                   <Clock size={10} className="mr-1" />{selectedService.durationMinutes} min
                 </Badge>
+                {promoApplies && (
+                  <div className="text-right">
+                    <p className="text-[11px] text-muted-foreground line-through">
+                      R$ {Number(selectedService.price ?? 0).toFixed(2).replace(".", ",")}
+                    </p>
+                    <p className="text-xs font-semibold text-primary">
+                      R$ {Number(promoPrice).toFixed(2).replace(".", ",")}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -341,10 +374,50 @@ export default function Agendar() {
                   <Clock size={14} className="text-primary" />
                   <span>{selectedTime}</span>
                 </div>
+                {promoApplies && (
+                  <div className="pt-2 border-t border-border">
+                    <p className="text-xs text-muted-foreground line-through">
+                      Preço original: R$ {Number(selectedService?.price ?? 0).toFixed(2).replace(".", ",")}
+                    </p>
+                    <p className="text-sm font-semibold text-primary">
+                      Preço promocional: R$ {Number(promoPrice).toFixed(2).replace(".", ",")}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             <div className="mb-6">
+              {!isAuthenticated && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <Label htmlFor="clientName" className="text-sm font-medium mb-2 block">
+                      Nome
+                    </Label>
+                    <Input
+                      id="clientName"
+                      placeholder="Seu nome"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="clientPhone" className="text-sm font-medium mb-2 block">
+                      Telefone
+                    </Label>
+                    <Input
+                      id="clientPhone"
+                      type="tel"
+                      placeholder="(11) 99999-9999"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
               <Label htmlFor="notes" className="text-sm font-medium mb-2 block">
                 Observações (opcional)
               </Label>
@@ -361,9 +434,11 @@ export default function Agendar() {
               <Button
                 className="flex-1"
                 onClick={handleConfirm}
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || clientRegisterMutation.isPending}
               >
-                {createMutation.isPending ? "Enviando..." : "Confirmar Agendamento"}
+                {createMutation.isPending || clientRegisterMutation.isPending
+                  ? "Enviando..."
+                  : "Confirmar Agendamento"}
               </Button>
               <a
                 href="https://wa.me/5511910928534?text=Olá%20Karine!%20Gostaria%20de%20agendar%20um%20horário."

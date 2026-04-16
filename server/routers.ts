@@ -10,6 +10,7 @@ import {
   createAppointment,
   createBlockedTime,
   createOffer,
+  createServiceOffer,
   createService,
   deleteBlockedTime,
   getAllAppointments,
@@ -22,6 +23,7 @@ import {
   getDashboardStats,
   getOfferById,
   getOffers,
+  getServiceOffers,
   getServiceById,
   getServices,
   getUnnotifiedPublishedOffers,
@@ -29,10 +31,12 @@ import {
   updateAppointmentStatus,
   updateBusinessHour,
   updateOffer,
+  setServiceOfferActive,
   updateService,
   updateUserProfile,
   getAppointmentsDueForReminder,
   getDb,
+  getUserByOpenId,
   upsertUser,
 } from "./db";
 import { notifyOwner } from "./_core/notification";
@@ -139,12 +143,122 @@ function newOfferEmail(data: { clientName: string; offerTitle: string; offerCont
   `;
 }
 
+function normalizePhone(value: string): string {
+  return value.replace(/\D+/g, "");
+}
+
+function formatCurrencyBRL(value: string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return value;
+  return amount.toFixed(2).replace(".", ",");
+}
+
+function getAppBaseUrl(req: { protocol?: string; get: (name: string) => string | undefined }): string {
+  const envUrl = process.env.APP_URL?.trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
+
+  const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
+  const proto = req.get("x-forwarded-proto") || req.protocol || "http";
+  return `${proto}://${host}`;
+}
+
 // ─── Routers ──────────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    clientRegister: publicProcedure
+      .input(
+        z.object({
+          name: z.string().min(2),
+          phone: z.string().min(8),
+          email: z.string().email().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.cookieSecret) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "JWT_SECRET is not configured.",
+          });
+        }
+
+        const normalizedPhone = normalizePhone(input.phone);
+        if (normalizedPhone.length < 10 || normalizedPhone.length > 13) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Telefone invalido.",
+          });
+        }
+
+        const openId = `local-client:${normalizedPhone}`;
+
+        await upsertUser({
+          openId,
+          name: input.name.trim(),
+          phone: normalizedPhone,
+          email: input.email?.trim().toLowerCase() ?? null,
+          loginMethod: "local-phone",
+          role: "user",
+          lastSignedIn: new Date(),
+        });
+
+        const sessionToken = await sdk.createSessionToken(openId, {
+          name: input.name.trim(),
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        return { success: true } as const;
+      }),
+    clientLogin: publicProcedure
+      .input(
+        z.object({
+          phone: z.string().min(8),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.cookieSecret) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "JWT_SECRET is not configured.",
+          });
+        }
+
+        const normalizedPhone = normalizePhone(input.phone);
+        if (normalizedPhone.length < 10 || normalizedPhone.length > 13) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Telefone invalido.",
+          });
+        }
+
+        const openId = `local-client:${normalizedPhone}`;
+        const user = await getUserByOpenId(openId);
+
+        if (!user) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Conta nao encontrada. Use a opcao de cadastro.",
+          });
+        }
+
+        await upsertUser({
+          openId,
+          lastSignedIn: new Date(),
+        });
+
+        const sessionToken = await sdk.createSessionToken(openId, {
+          name: user.name ?? "Cliente",
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        return { success: true } as const;
+      }),
     login: publicProcedure
       .input(
         z.object({
@@ -276,9 +390,17 @@ export const appRouter = router({
         const [closeH, closeM] = dayHours.closeTime.split(":").map(Number);
         const openMinutes = (openH ?? 9) * 60 + (openM ?? 0);
         const closeMinutes = (closeH ?? 19) * 60 + (closeM ?? 0);
+        const now = new Date();
+        const isToday =
+          now.getFullYear() === dateObj.getFullYear() &&
+          now.getMonth() === dateObj.getMonth() &&
+          now.getDate() === dateObj.getDate();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
         const slots: string[] = [];
         for (let m = openMinutes; m + serviceDuration <= closeMinutes; m += 30) {
+          if (isToday && m <= currentMinutes) continue;
+
           const h = Math.floor(m / 60);
           const min = m % 60;
           const timeStr = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
@@ -329,10 +451,14 @@ export const appRouter = router({
           );
         }
 
-        await notifyOwner({
-          title: "Novo agendamento",
-          content: `${ctx.user.name ?? "Cliente"} agendou ${service?.name ?? "serviço"} para ${input.appointmentDate} às ${input.appointmentTime}`,
-        });
+        try {
+          await notifyOwner({
+            title: "Novo agendamento",
+            content: `${ctx.user.name ?? "Cliente"} agendou ${service?.name ?? "serviço"} para ${input.appointmentDate} às ${input.appointmentTime}`,
+          });
+        } catch (error) {
+          console.warn("[Notification] Falha ao enviar notificação de novo agendamento:", error);
+        }
 
         return { success: true };
       }),
@@ -431,6 +557,10 @@ export const appRouter = router({
       .input(z.object({ all: z.boolean().optional() }).optional())
       .query(({ input }) => getOffers(!input?.all)),
 
+    serviceList: publicProcedure
+      .input(z.object({ all: z.boolean().optional() }).optional())
+      .query(({ input }) => getServiceOffers(!input?.all)),
+
     get: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(({ input }) => getOfferById(input.id)),
@@ -438,14 +568,89 @@ export const appRouter = router({
     create: adminProcedure
       .input(
         z.object({
-          title: z.string().min(1),
+          serviceId: z.number(),
           content: z.string().min(1),
-          imageUrl: z.string().optional(),
           type: z.enum(["offer", "news"]),
+          promotionalPrice: z.string().optional(),
           expiresAt: z.date().optional(),
         })
       )
-      .mutation(({ input }) => createOffer(input)),
+      .mutation(async ({ input, ctx }) => {
+        const service = await getServiceById(input.serviceId);
+        if (!service) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Servico nao encontrado." });
+        }
+
+        if (input.type === "offer" && !input.promotionalPrice) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valor promocional e obrigatorio para oferta.",
+          });
+        }
+
+        await createOffer({
+          serviceId: input.serviceId,
+          title: service.name,
+          content: input.content,
+          offerDescription: input.type === "offer" ? input.content : undefined,
+          promotionalPrice: input.type === "offer" ? input.promotionalPrice : undefined,
+          type: input.type,
+          active: input.type === "offer",
+          published: true,
+          publishedAt: new Date(),
+          notificationSent: true,
+          expiresAt: input.expiresAt,
+        });
+
+        const appBaseUrl = getAppBaseUrl(ctx.req);
+        const appLink = `${appBaseUrl}/agendar?serviceId=${input.serviceId}${
+          input.promotionalPrice ? `&promoPrice=${encodeURIComponent(input.promotionalPrice)}` : ""
+        }`;
+        const offerPriceLabel = input.promotionalPrice
+          ? `R$ ${formatCurrencyBRL(input.promotionalPrice)}`
+          : "consulte valores";
+        const whatsappMessage =
+          `Olá! Temos uma nova oferta no Studio Karine Reverte: ${service.name} por apenas ${offerPriceLabel}! ` +
+          `Confira e agende aqui: ${appLink}`;
+        const whatsappUrl =
+          `https://wa.me/5511910928534?text=${encodeURIComponent(whatsappMessage)}`;
+
+        return {
+          success: true,
+          whatsappUrl,
+          whatsappMessage,
+        } as const;
+      }),
+
+    createServiceOffer: adminProcedure
+      .input(
+        z.object({
+          serviceId: z.number(),
+          promotionalPrice: z.string().min(1),
+          offerDescription: z.string().min(1),
+          expiresAt: z.date().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const service = await getServiceById(input.serviceId);
+        if (!service) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Servico nao encontrado." });
+        }
+        await createServiceOffer(input);
+        return { success: true } as const;
+      }),
+
+    setServiceOfferActive: adminProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          active: z.boolean(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        await setServiceOfferActive(input.id, input.active);
+        return { success: true } as const;
+      }),
 
     update: adminProcedure
       .input(
@@ -453,7 +658,6 @@ export const appRouter = router({
           id: z.number(),
           title: z.string().optional(),
           content: z.string().optional(),
-          imageUrl: z.string().optional(),
           type: z.enum(["offer", "news"]).optional(),
           expiresAt: z.date().optional(),
         })

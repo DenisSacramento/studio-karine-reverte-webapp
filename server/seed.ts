@@ -39,7 +39,8 @@ async function seedServices() {
   let inserted = 0;
   let updated = 0;
 
-  for (const [index, item] of SERVICES_SEED.entries()) {
+  for (let index = 0; index < SERVICES_SEED.length; index++) {
+    const item = SERVICES_SEED[index]!;
     const existing = await db
       .select({ id: services.id })
       .from(services)

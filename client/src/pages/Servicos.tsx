@@ -6,8 +6,6 @@ import { Clock, Scissors } from "lucide-react";
 import { Link } from "wouter";
 import AppHeader from "@/components/AppHeader";
 import WhatsAppFab from "@/components/WhatsAppFab";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 
 const SERVICE_ICONS: Record<string, string> = {
   "Selagem": "✨",
@@ -22,7 +20,6 @@ const SERVICE_ICONS: Record<string, string> = {
 
 export default function Servicos() {
   const { data: services, isLoading } = trpc.services.list.useQuery();
-  const { isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
@@ -74,15 +71,9 @@ export default function Servicos() {
                         R$ {Number(service.price).toFixed(2).replace(".", ",")}
                       </p>
                     )}
-                    {isAuthenticated ? (
-                      <Link href={`/agendar?serviceId=${service.id}`}>
-                        <Button size="sm" className="w-full">Agendar este serviço</Button>
-                      </Link>
-                    ) : (
-                      <a href={getLoginUrl()}>
-                        <Button size="sm" className="w-full">Agendar este serviço</Button>
-                      </a>
-                    )}
+                    <Link href={`/agendar?serviceId=${service.id}`}>
+                      <Button size="sm" className="w-full">Agendar este serviço</Button>
+                    </Link>
                   </CardContent>
                 </Card>
               ))}

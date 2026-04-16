@@ -13,6 +13,7 @@ import MeusAgendamentos from "./pages/MeusAgendamentos";
 import Admin from "./pages/Admin";
 import AdminOfertas from "./pages/AdminOfertas";
 import Login from "./pages/Login";
+import AdminLogin from "./pages/AdminLogin";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/agendar" component={Agendar} />
       <Route path="/ofertas" component={Ofertas} />
       <Route path="/login" component={Login} />
+      <Route path="/admin/login" component={AdminLogin} />
       <Route path="/perfil" component={Perfil} />
       <Route path="/meus-agendamentos" component={MeusAgendamentos} />
       <Route path="/admin" component={Admin} />

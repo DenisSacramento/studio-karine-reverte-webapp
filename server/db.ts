@@ -53,7 +53,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
-  const textFields = ["name", "email", "loginMethod"] as const;
+  const textFields = ["name", "email", "phone", "loginMethod"] as const;
 
   for (const field of textFields) {
     const value = user[field];
@@ -334,29 +334,152 @@ export async function getOffers(publishedOnly = true) {
   if (!db) return [];
   const query = db.select().from(offers);
   if (publishedOnly) {
-    return query.where(eq(offers.published, true)).orderBy(desc(offers.publishedAt));
+    return query.where(eq(offers.published, 1)).orderBy(desc(offers.publishedAt));
   }
   return query.orderBy(desc(offers.createdAt));
+}
+
+export async function getServiceOffers(activeOnly = true) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      id: offers.id,
+      serviceId: services.id,
+      serviceName: services.name,
+      serviceDuration: services.durationMinutes,
+      serviceImageUrl: services.imageUrl,
+      servicePrice: services.price,
+      promotionalPrice: offers.promotionalPrice,
+      offerDescription: offers.offerDescription,
+      active: offers.active,
+      published: offers.published,
+      expiresAt: offers.expiresAt,
+      updatedAt: offers.updatedAt,
+      createdAt: offers.createdAt,
+    })
+    .from(offers)
+    .innerJoin(services, eq(offers.serviceId, services.id))
+    .where(
+      and(
+        eq(offers.type, "offer"),
+        activeOnly ? eq(offers.active, 1) : undefined,
+        activeOnly ? eq(offers.published, 1) : undefined
+      )
+    )
+    .orderBy(desc(offers.updatedAt));
+}
+
+function toTinyIntBoolean(value: boolean | undefined): 0 | 1 | undefined {
+  if (value === undefined) return undefined;
+  return value ? 1 : 0;
+}
+
+function normalizeDecimal(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return undefined;
+  return amount.toFixed(2);
+}
+
+export async function createServiceOffer(data: {
+  serviceId: number;
+  promotionalPrice: string;
+  offerDescription: string;
+  expiresAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db
+    .update(offers)
+    .set({ active: 0, published: 0 })
+    .where(
+      and(
+        eq(offers.serviceId, data.serviceId),
+        eq(offers.type, "offer"),
+        eq(offers.active, 1)
+      )
+    );
+
+  const service = await getServiceById(data.serviceId);
+  const title = service
+    ? `Oferta Relampago - ${service.name}`
+    : "Oferta Relampago";
+
+  await db.insert(offers).values({
+    serviceId: data.serviceId,
+    title,
+    content: data.offerDescription,
+    offerDescription: data.offerDescription,
+    promotionalPrice: normalizeDecimal(data.promotionalPrice),
+    type: "offer",
+    active: 1,
+    published: 1,
+    publishedAt: new Date(),
+    notificationSent: 1,
+    expiresAt: data.expiresAt,
+  });
+}
+
+export async function setServiceOfferActive(id: number, active: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(offers)
+    .set({
+      active: toTinyIntBoolean(active) as any,
+      published: toTinyIntBoolean(active) as any,
+      publishedAt: active ? new Date() : null,
+    })
+    .where(eq(offers.id, id));
 }
 
 export async function createOffer(data: {
   title: string;
   content: string;
-  imageUrl?: string;
   type: "offer" | "news";
+  serviceId?: number;
+  offerDescription?: string;
+  promotionalPrice?: string;
+  active?: boolean;
+  published?: boolean;
+  publishedAt?: Date;
+  notificationSent?: boolean;
   expiresAt?: Date;
 }) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(offers).values({ ...data, published: false });
+
+  const insertData = {
+    serviceId: data.serviceId,
+    title: data.title.trim(),
+    content: data.content.trim(),
+    offerDescription: data.offerDescription?.trim() || undefined,
+    promotionalPrice: normalizeDecimal(data.promotionalPrice),
+    active: toTinyIntBoolean(data.active ?? false) ?? 0,
+    type: data.type,
+    published: toTinyIntBoolean(data.published ?? false) ?? 0,
+    publishedAt: data.publishedAt instanceof Date ? data.publishedAt : undefined,
+    expiresAt: data.expiresAt,
+    notificationSent: toTinyIntBoolean(data.notificationSent ?? false) ?? 0,
+  };
+
+  await db.insert(offers).values({
+    ...insertData,
+  });
 }
 
 export async function updateOffer(
   id: number,
   data: Partial<{
+    serviceId: number;
     title: string;
     content: string;
-    imageUrl: string;
+    offerDescription: string;
+    promotionalPrice: string;
+    active: boolean;
     type: "offer" | "news";
     published: boolean;
     publishedAt: Date;
@@ -366,7 +489,25 @@ export async function updateOffer(
 ) {
   const db = await getDb();
   if (!db) return;
-  await db.update(offers).set(data).where(eq(offers.id, id));
+
+  const updateData: Record<string, unknown> = {
+    ...data,
+  };
+
+  if (data.active !== undefined) {
+    updateData.active = toTinyIntBoolean(data.active);
+  }
+  if (data.published !== undefined) {
+    updateData.published = toTinyIntBoolean(data.published);
+  }
+  if (data.notificationSent !== undefined) {
+    updateData.notificationSent = toTinyIntBoolean(data.notificationSent);
+  }
+  if (data.promotionalPrice !== undefined) {
+    updateData.promotionalPrice = normalizeDecimal(data.promotionalPrice);
+  }
+
+  await db.update(offers).set(updateData).where(eq(offers.id, id));
 }
 
 export async function getOfferById(id: number) {
@@ -382,7 +523,7 @@ export async function getUnnotifiedPublishedOffers() {
   return db
     .select()
     .from(offers)
-    .where(and(eq(offers.published, true), eq(offers.notificationSent, false)));
+    .where(and(eq(offers.published, 1), eq(offers.notificationSent, 0)));
 }
 
 // ─── Business Hours ───────────────────────────────────────────────────────────

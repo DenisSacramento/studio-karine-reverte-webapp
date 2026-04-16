@@ -15,6 +15,20 @@
       "when": 1774964687127,
       "tag": "0001_lucky_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1774964687128,
+      "tag": "0002_flash_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1774964687129,
+      "tag": "0003_offers_tidy",
+      "breakpoints": true
     }
   ]
 }

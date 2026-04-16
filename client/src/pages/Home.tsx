@@ -1,5 +1,3 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +19,6 @@ const SERVICE_ICONS: Record<string, string> = {
 };
 
 export default function Home() {
-  const { isAuthenticated } = useAuth();
   const { data: services } = trpc.services.list.useQuery();
   const { data: offers } = trpc.offers.list.useQuery();
 
@@ -53,19 +50,11 @@ export default function Home() {
               dignidade e alegria. Você é tratada com respeito, honestidade e amor.
             </p>
             <div className="flex flex-wrap gap-3">
-              {isAuthenticated ? (
-                <Link href="/agendar">
-                  <Button size="lg" className="bg-white text-primary hover:bg-pink-50 font-semibold gap-2">
-                    <CalendarDays size={18} /> Agendar Horário
-                  </Button>
-                </Link>
-              ) : (
-                <a href={getLoginUrl()}>
-                  <Button size="lg" className="bg-white text-primary hover:bg-pink-50 font-semibold gap-2">
-                    <CalendarDays size={18} /> Agendar Horário
-                  </Button>
-                </a>
-              )}
+              <Link href="/agendar">
+                <Button size="lg" className="bg-white text-primary hover:bg-pink-50 font-semibold gap-2">
+                  <CalendarDays size={18} /> Agendar Horário
+                </Button>
+              </Link>
               <Link href="/servicos">
                 <Button
                   size="lg"

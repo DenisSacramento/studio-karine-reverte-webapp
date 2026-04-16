@@ -69,14 +69,17 @@ export type InsertAppointment = typeof appointments.$inferInsert;
 // ─── Ofertas e Novidades ──────────────────────────────────────────────────────
 export const offers = mysqlTable("offers", {
   id: int("id").autoincrement().primaryKey(),
+  serviceId: int("serviceId"),
   title: varchar("title", { length: 200 }).notNull(),
   content: text("content").notNull(),
-  imageUrl: text("imageUrl"),
+  offerDescription: text("offerDescription"),
+  promotionalPrice: decimal("promotionalPrice", { precision: 10, scale: 2 }),
+  active: int("active").notNull().default(0),
   type: mysqlEnum("type", ["offer", "news"]).notNull().default("offer"),
-  published: boolean("published").notNull().default(false),
+  published: int("published").notNull().default(0),
   publishedAt: timestamp("publishedAt"),
   expiresAt: timestamp("expiresAt"),
-  notificationSent: boolean("notificationSent").notNull().default(false),
+  notificationSent: int("notificationSent").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

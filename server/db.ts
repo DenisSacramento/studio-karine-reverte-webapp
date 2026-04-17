@@ -13,6 +13,7 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _missingDatabaseUrlWarned = false;
 
 function createSecureMysqlPool(connectionString: string) {
   const parsed = new URL(connectionString);
@@ -25,6 +26,12 @@ function createSecureMysqlPool(connectionString: string) {
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
     database,
+    waitForConnections: true,
+    connectionLimit: Number(process.env.DB_POOL_LIMIT ?? 5),
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 10000),
     ssl: {
       rejectUnauthorized: true,
       minVersion: "TLSv1.2",
@@ -33,15 +40,23 @@ function createSecureMysqlPool(connectionString: string) {
 }
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  const connectionString = ENV.databaseUrl || process.env.DATABASE_URL;
+
+  if (!_db && connectionString) {
     try {
-      const pool = createSecureMysqlPool(process.env.DATABASE_URL);
+      const pool = createSecureMysqlPool(connectionString);
       _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
+
+  if (!_db && !connectionString && !_missingDatabaseUrlWarned) {
+    _missingDatabaseUrlWarned = true;
+    console.warn("[Database] DATABASE_URL is not configured. API calls will return empty fallback data.");
+  }
+
   return _db;
 }
 

@@ -13,6 +13,84 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _missingDatabaseUrlWarned = false;
+
+
+type ServiceSeed = {
+  name: string;
+  price: string;
+  durationMinutes: number;
+  description: string;
+};
+
+const DEFAULT_SERVICE_SEED: ServiceSeed[] = [
+  { name: "Corte Simples", price: "35.00", durationMinutes: 45, description: "Corte tradicional" },
+  { name: "Corte Long Bob/Chanel", price: "40.00", durationMinutes: 60, description: "Corte Long Bob ou Chanel" },
+  { name: "Progressiva P e M", price: "150.00", durationMinutes: 180, description: "Progressiva para cabelo pequeno e medio" },
+  { name: "Progressiva G", price: "200.00", durationMinutes: 240, description: "Progressiva para cabelo grande" },
+  { name: "Coloracao + Hidratacao", price: "65.00", durationMinutes: 120, description: "Coloracao com hidratacao" },
+  { name: "Escova Simples Mega Hair", price: "70.00", durationMinutes: 90, description: "Escova simples para mega hair" },
+  { name: "Escova Mega Hair + Hidratacao", price: "80.00", durationMinutes: 120, description: "Escova com hidratacao para mega hair" },
+  { name: "Hidroreconstrucao", price: "70.00", durationMinutes: 90, description: "Tratamento de hidroreconstrucao" },
+  { name: "Hidronutricao + Finalizacao", price: "70.00", durationMinutes: 90, description: "Hidronutricao com finalizacao" },
+  { name: "Escova + Hidratacao", price: "50.00", durationMinutes: 75, description: "Escova com hidratacao" },
+  { name: "Escova Simples", price: "40.00", durationMinutes: 60, description: "Escova simples" },
+  { name: "Botox (A partir de)", price: "90.00", durationMinutes: 120, description: "Botox capilar" },
+  { name: "Reconstrucao", price: "80.00", durationMinutes: 90, description: "Reconstrucao capilar" },
+  { name: "Selagem (A partir de)", price: "100.00", durationMinutes: 150, description: "Selagem capilar" },
+  { name: "Cristalizacao", price: "75.00", durationMinutes: 90, description: "Cristalizacao capilar" },
+  { name: "Cauterizacao", price: "80.00", durationMinutes: 90, description: "Cauterizacao capilar" },
+  { name: "Cronograma Capilar (4 sessoes)", price: "200.00", durationMinutes: 120, description: "Pacote de 4 sessoes" },
+];
+
+let _seedDefaultsPromise: Promise<void> | null = null;
+
+async function ensureDefaultCatalogData() {
+  const db = await getDb();
+  if (!db) return;
+
+  const countRows = await db.select({ count: sql<number>`count(*)` }).from(services);
+  const count = Number(countRows[0]?.count ?? 0);
+  if (count > 0) return;
+
+  for (let index = 0; index < DEFAULT_SERVICE_SEED.length; index++) {
+    const item = DEFAULT_SERVICE_SEED[index]!;
+    await db.insert(services).values({
+      name: item.name,
+      description: item.description,
+      durationMinutes: item.durationMinutes,
+      price: item.price,
+      active: true,
+      sortOrder: index,
+    });
+  }
+
+  const businessHoursCountRows = await db.select({ count: sql<number>`count(*)` }).from(businessHours);
+  const businessHoursCount = Number(businessHoursCountRows[0]?.count ?? 0);
+  if (businessHoursCount === 0) {
+    for (let day = 0; day <= 6; day++) {
+      await db.insert(businessHours).values({
+        dayOfWeek: day,
+        openTime: "08:00",
+        closeTime: "18:00",
+        isOpen: day >= 1 && day <= 6,
+      });
+    }
+  }
+
+  console.info("[Database] Applied default services/business-hours seed because catalog was empty.");
+}
+
+async function ensureDefaultCatalogDataOnce() {
+  if (!_seedDefaultsPromise) {
+    _seedDefaultsPromise = ensureDefaultCatalogData().catch((error) => {
+      _seedDefaultsPromise = null;
+      console.warn("[Database] Could not apply default catalog seed:", error);
+    });
+  }
+
+  await _seedDefaultsPromise;
+}
 
 function createSecureMysqlPool(connectionString: string) {
   const parsed = new URL(connectionString);
@@ -25,6 +103,12 @@ function createSecureMysqlPool(connectionString: string) {
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
     database,
+    waitForConnections: true,
+    connectionLimit: Number(process.env.DB_POOL_LIMIT ?? 5),
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 10000),
     ssl: {
       rejectUnauthorized: true,
       minVersion: "TLSv1.2",
@@ -33,15 +117,23 @@ function createSecureMysqlPool(connectionString: string) {
 }
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  const connectionString = ENV.databaseUrl || process.env.DATABASE_URL;
+
+  if (!_db && connectionString) {
     try {
-      const pool = createSecureMysqlPool(process.env.DATABASE_URL);
+      const pool = createSecureMysqlPool(connectionString);
       _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
+
+  if (!_db && !connectionString && !_missingDatabaseUrlWarned) {
+    _missingDatabaseUrlWarned = true;
+    console.warn("[Database] DATABASE_URL is not configured. API calls will return empty fallback data.");
+  }
+
   return _db;
 }
 
@@ -123,6 +215,9 @@ export async function getAllUsers() {
 export async function getServices(activeOnly = true) {
   const db = await getDb();
   if (!db) return [];
+
+  await ensureDefaultCatalogDataOnce();
+
   const query = db.select().from(services);
   if (activeOnly) {
     return query.where(eq(services.active, true)).orderBy(services.sortOrder);

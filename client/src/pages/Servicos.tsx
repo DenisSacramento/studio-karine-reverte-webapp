@@ -19,7 +19,7 @@ const SERVICE_ICONS: Record<string, string> = {
 };
 
 export default function Servicos() {
-  const { data: services, isLoading } = trpc.services.list.useQuery();
+  const { data: services, isLoading, error } = trpc.services.list.useQuery();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -44,7 +44,16 @@ export default function Servicos() {
       {/* Services Grid */}
       <section className="py-20 md:py-24">
         <div className="container">
-          {isLoading ? (
+          {error ? (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+              <p className="text-lg font-semibold text-destructive">
+                Não foi possível carregar os serviços
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {error.message}
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-64 rounded-xl bg-muted animate-pulse" />
